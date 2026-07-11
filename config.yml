@@ -1,0 +1,16 @@
+filters:
+  max_price: 810
+  min_size_sqm: 40
+  min_rooms: 2
+  location_contains: "Wien"
+  immediate_only: true
+
+sources:
+  - gesiba
+  - sozialbau
+  - wohnen
+  - oevw
+  - siedlungsunion
+  - familienwohnbau
+  - oesw
+  - egw
