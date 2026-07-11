@@ -31,9 +31,15 @@ def apply_filters(apartments: List[Apartment], config: Config) -> List[Apartment
             if terms:
                 matched = False
                 for term in terms:
-                    if term in apt.location.lower() or term in apt.title.lower():
-                        matched = True
-                        break
+                    #  handle "Wien" to avoid matching "Wiener Neustadt", "Wiener Neudorf", etc.
+                    if term == "wien":
+                        if re.search(r'\bwien\b', apt.location.lower()) or re.search(r'\bwien\b', apt.title.lower()):
+                            matched = True
+                            break
+                    else:
+                        if term in apt.location.lower() or term in apt.title.lower():
+                            matched = True
+                            break
                 if not matched:
                     continue
 
