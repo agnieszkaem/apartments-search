@@ -1,1 +1,1 @@
-# apartments-search
+# apartments-search-service

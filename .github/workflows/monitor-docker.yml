@@ -1,0 +1,59 @@
+name: Apartment Monitor Scheduler (Docker)
+
+on:
+  schedule:
+    # Run every 10 minutes
+    - cron: '*/10 6-18 * * 1-5'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        load: true
+        tags: apartment-monitor:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Run Scraper via Docker Container
+      env:
+        SMTP_HOST: ${{ secrets.SMTP_HOST }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        SMTP_USER: ${{ secrets.SMTP_USER }}
+        SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+        SOZIALBAU_JSESSIONID: ${{ secrets.SOZIALBAU_JSESSIONID }}
+        SOZIALBAU_SERVERID: ${{ secrets.SOZIALBAU_SERVERID }}
+      run: |
+        docker run --rm \
+          -e SMTP_HOST="$SMTP_HOST" \
+          -e SMTP_PORT="$SMTP_PORT" \
+          -e SMTP_USER="$SMTP_USER" \
+          -e SMTP_PASS="$SMTP_PASS" \
+          -e NOTIFICATION_EMAIL="$NOTIFICATION_EMAIL" \
+          -e SOZIALBAU_JSESSIONID="$SOZIALBAU_JSESSIONID" \
+          -e SOZIALBAU_SERVERID="$SOZIALBAU_SERVERID" \
+          -v ${{ github.workspace }}/state.json:/app/state.json \
+          apartment-monitor:latest
+
+    - name: Commit State Changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add state.json
+        # Only commit if there are changes to state.json
+        git diff-index --quiet HEAD || (git commit -m "Update state.json [skip ci]" && git push)
