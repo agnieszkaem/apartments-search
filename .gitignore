@@ -14,9 +14,6 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
-#plan
-plan.md
-
 # Temporary analysis files
 /app.js
 /searches.js
