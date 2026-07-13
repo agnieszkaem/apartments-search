@@ -1,10 +1,10 @@
 name: Apartment Monitor Scheduler v2
 
 on:
-  schedule:
-    # Run every 10 minutes
-    - cron: '*/10 4-17 * * 1-5'
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  # schedule: #handled externally by cron-job.org github API job trigger
+  #   # Run every 10 minutes
+  #   - cron: '*/10 4-17 * * 1-5'
+  workflow_dispatch: # keep manual trigger from GitHub UI
 
 jobs:
   monitor:

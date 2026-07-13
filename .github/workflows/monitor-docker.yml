@@ -1,10 +1,7 @@
 name: Apartment Monitor Scheduler (Docker)
 
 on:
-  schedule:
-    # Run every 10 minutes
-    - cron: '*/10 6-18 * * 1-5'
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  workflow_dispatch: # keep manual trigger from GitHub UI
 
 jobs:
   monitor:
