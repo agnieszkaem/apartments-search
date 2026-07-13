@@ -1,4 +1,4 @@
-name: Apartment Monitor Scheduler
+name: Apartment Monitor Scheduler v2
 
 on:
   schedule:
