@@ -86,13 +86,6 @@ def run_pipeline():
     # 3.5. Load State BEFORE saving newly scraped listings to Neon DB
     state = State()
 
-    # 3.6. save unique listings to database for tracking, price changes, and inactivity
-    if db_ready:
-        try:
-            save_apartments_to_db(unique_listings, config.sources)
-        except Exception as db_save_err:
-            print(f"Error saving listings to Database: {db_save_err}")
-
     # 4. user filters
     filtered_listings = apply_filters(unique_listings, config)
     print(f"Filtered listings matching criteria: {len(filtered_listings)}")
@@ -111,7 +104,7 @@ def run_pipeline():
         email_sent = send_notification_email(new_listings)
         
         if email_sent:
-            # seen and save state.json
+            # Mark them as seen and save state.json
             new_keys = [apt.stable_key for apt in new_listings]
             state.mark_seen(new_keys)
             print("Successfully updated state.json with new listing keys.")
@@ -120,7 +113,14 @@ def run_pipeline():
     else:
         print("No new matches found. No email sent.")
 
-    print("Apartment Monitor run complete.")
+    # 7. save all unique listings to Neon Database for tracking, price changes, and inactivity
+    if db_ready:
+        try:
+            print("Saving unique listings to Neon Database...")
+            save_apartments_to_db(unique_listings, config.sources)
+        except Exception as db_save_err:
+            print(f"Error saving listings to Database: {db_save_err}")
 
+    print("Apartment Monitor run complete.")
 if __name__ == "__main__":
     run_pipeline()
