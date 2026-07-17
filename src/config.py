@@ -79,7 +79,7 @@ class Config:
 
     @property
     def sources(self) -> List[str]:
-        return self.data.get("sources", ["gesiba", "sozialbau", "wohnen", "oevw", "siedlungsunion", "familienwohnbau", "oesw", "egw"])
+        return self.data.get("sources", ["gesiba", "sozialbau", "wohnen", "oevw", "siedlungsunion", "familienwohnbau", "oesw", "egw", "schwarzatal", "lebenswert wohnen", "bwsg"])
 
     @property
     def max_price(self) -> Optional[float]:
