@@ -26,6 +26,17 @@ class State:
         else:
             self.seen_keys = set()
 
+        #optinal - load from db to keep them fully in-sync
+        try:
+            from src.db import is_db_configured, get_seen_keys_from_db
+            if is_db_configured():
+                db_keys = get_seen_keys_from_db()
+                if db_keys:
+                    self.seen_keys.update(db_keys)
+                    print(f"Synced {len(db_keys)} seen keys from Neon database.")
+        except Exception as e:
+            print(f"Note: database seen sync skipped: {e}")
+
     def is_new(self, key: str) -> bool:
         return key not in self.seen_keys
 
@@ -33,6 +44,15 @@ class State:
         for key in keys:
             self.seen_keys.add(key)
         self.save()
+        
+        # sync to db to keep them fully in-sync
+        try:
+            from src.db import is_db_configured, save_notified_keys_to_db
+            if is_db_configured():
+                save_notified_keys_to_db(keys)
+                print(f"Successfully saved {len(keys)} notified keys to Neon database.")
+        except Exception as e:
+            print(f"Note: database seen sync save skipped: {e}")
 
     def save(self):
         try:
