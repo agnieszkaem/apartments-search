@@ -34,7 +34,6 @@ def extract_district(location_str: str, title_str: str = "") -> Optional[int]:
     return None
 
 def init_db():
-    """ create normalized tables if they do not exist."""
     if not is_db_configured():
         if not HAS_POSTGRES:
             print("psycopg2-binary is not installed. Database operations are disabled.")
@@ -66,12 +65,12 @@ def init_db():
                 );
             """)
             
-            #  indexes for optimal querying
+            # indexes for optimal querying
             cur.execute("CREATE INDEX IF NOT EXISTS idx_apartments_source ON apartments(source);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_apartments_is_active ON apartments(is_active);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_apartments_district ON apartments(district);")
             
-            # 2.  history table
+            # 2. history table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS apartment_history (
                     id SERIAL PRIMARY KEY,
@@ -84,6 +83,14 @@ def init_db():
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_history_stable_key ON apartment_history(stable_key);")
             
+            # 3. notified_listings table to track emailed matches separately from all scraped inventory
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS notified_listings (
+                    stable_key VARCHAR(255) PRIMARY KEY,
+                    notified_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            
             conn.commit()
             print("Database tables successfully verified/created in Neon.")
             return True
@@ -95,7 +102,6 @@ def init_db():
             conn.close()
 
 def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[str]:
-
     if not is_db_configured():
         return set()
         
@@ -105,10 +111,34 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
     try:
         conn = psycopg2.connect(get_db_url())
         with conn.cursor() as cur:
+            # clean up existing non-Vienna apartments from the DB
+            cur.execute("SELECT stable_key, title, location, district FROM apartments")
+            existing_db_rows = cur.fetchall()
+            keys_to_delete = []
+            for key, title, location, dist in existing_db_rows:
+                has_vienna_term = bool(re.search(r'\bwien\b', (location or "") + " " + (title or ""), re.IGNORECASE))
+                is_wiener_neustadt_or_neudorf = bool(re.search(r'\bwiener\s+(neustadt|neudorf)\b', (location or "") + " " + (title or ""), re.IGNORECASE))
+                is_vienna = (dist is not None) or (has_vienna_term and not is_wiener_neustadt_or_neudorf)
+                if not is_vienna:
+                    keys_to_delete.append(key)
+            
+            if keys_to_delete:
+                print(f"Deleting {len(keys_to_delete)} non-Vienna apartments from the db")
+                cur.execute("DELETE FROM apartments WHERE stable_key = ANY(%s)", (keys_to_delete,))
+
             for apt in apartments:
                 stable_key = apt.stable_key
                 district = extract_district(apt.location, apt.title)
                 
+                # if the listing is in Vienna
+                has_vienna_term = bool(re.search(r'\bwien\b', (apt.location or "") + " " + (apt.title or ""), re.IGNORECASE))
+                is_wiener_neustadt_or_neudorf = bool(re.search(r'\bwiener\s+(neustadt|neudorf)\b', (apt.location or "") + " " + (apt.title or ""), re.IGNORECASE))
+                is_vienna = (district is not None) or (has_vienna_term and not is_wiener_neustadt_or_neudorf)
+                
+                if not is_vienna:
+                    continue # skip saving apartments outside of Vienna
+                
+                # if listing already exists to log price changes
                 cur.execute(
                     "SELECT price, size_sqm, is_active FROM apartments WHERE stable_key = %s",
                     (stable_key,)
@@ -119,7 +149,7 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                 if is_new:
                     new_keys.add(stable_key)
                 
-                # upsert 
+                # upsert main record
                 cur.execute("""
                     INSERT INTO apartments (
                         stable_key, source, listing_id, title, location, district,
@@ -143,7 +173,7 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                     apt.available_immediately
                 ))
                 
-                # add history snapshot if it's new or if price/size changed or if it was inactive
+                #  history snapshot if change
                 if is_new:
                     cur.execute("""
                         INSERT INTO apartment_history (stable_key, price, size_sqm, is_active)
@@ -161,9 +191,9 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                             VALUES (%s, %s, %s, TRUE)
                         """, (stable_key, apt.price or 0.0, apt.size_sqm or 0.0))
             
-            # inactive listings that are no longer visible
+            # inactive listings that are no longer visible 
             if scraped_sources:
-                # all currently active apartments in DB for these sources that were NOT in the current scraper run
+                #  all currently active apartments in DB 
                 placeholders = ', '.join(['%s'] * len(scraped_sources))
                 query = f"""
                     SELECT stable_key, price, size_sqm 
@@ -175,13 +205,13 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                 
                 for key, price, size in active_db_apts:
                     if key not in active_keys_in_run:
-                        print(f"ℹListing '{key}' is no longer active (hidden by provider). Updating status to inactive.")
-                        #  inactive mark
+                        print(f"Listing '{key}' is no longer active (hidden by provider). Updating status to inactive.")
+                        # mark inactive
                         cur.execute(
                             "UPDATE apartments SET is_active = FALSE, last_seen = CURRENT_TIMESTAMP WHERE stable_key = %s",
                             (key,)
                         )
-                        #  history snapshot
+                        # history snapshot
                         cur.execute("""
                             INSERT INTO apartment_history (stable_key, price, size_sqm, is_active)
                             VALUES (%s, %s, %s, FALSE)
@@ -198,19 +228,40 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
             conn.close()
 
 def get_seen_keys_from_db() -> Set[str]:
-    """returns a set of all seen keys currently in the database."""
+    """Returns a set of all notified keys currently in the database."""
     if not is_db_configured():
         return set()
         
     try:
         conn = psycopg2.connect(get_db_url())
         with conn.cursor() as cur:
-            cur.execute("SELECT stable_key FROM apartments")
+            cur.execute("SELECT stable_key FROM notified_listings")
             rows = cur.fetchall()
             return set(r[0] for r in rows)
     except Exception as e:
         print(f"Error fetching seen keys from DB: {e}")
         return set()
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+def save_notified_keys_to_db(keys: List[str]):
+    if not is_db_configured() or not keys:
+        return
+        
+    try:
+        conn = psycopg2.connect(get_db_url())
+        with conn.cursor() as cur:
+            for key in keys:
+                cur.execute("""
+                    INSERT INTO notified_listings (stable_key)
+                    VALUES (%s)
+                    ON CONFLICT (stable_key) DO NOTHING
+                """, (key,))
+            conn.commit()
+            print(f"Saved {len(keys)} notified keys to database.")
+    except Exception as e:
+        print(f"Error saving notified keys to DB: {e}")
     finally:
         if 'conn' in locals() and conn:
             conn.close()
