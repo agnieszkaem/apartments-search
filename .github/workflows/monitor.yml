@@ -1,39 +1,50 @@
-name: Apartment Monitor
+name: Apartment Monitor Scheduler
 
 on:
-  # schedule: #handled externally by cron-job.org github API job trigger
-  #   # Run every 10 minutes
-  #   - cron: '*/10 4-17 * * 1-5'
-  workflow_dispatch: # keep manual trigger from GitHub UI
-
+  # schedule:
+  #   - cron: '*/10 4-16 * * 1-5'
+  workflow_dispatch: # allows manual trigger from GitHub UI
 
 jobs:
-  scrape:
+  monitor:
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SMTP_USER: ${{ secrets.SMTP_USER }}
-      SMTP_PASS: ${{ secrets.SMTP_PASS }}
-      NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
-      SOZIALBAU_COOKIE: ${{ secrets.SOZIALBAU_COOKIE }}
-      SOZIALBAU_JSESSIONID: ${{ secrets.SOZIALBAU_JSESSIONID }}
-      SOZIALBAU_SERVERID: ${{ secrets.SOZIALBAU_SERVERID }}
+    permissions:
+      contents: write
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-node-version: '3.10'
-          cache: 'pip'
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip' # caching pip dependencies
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run Scraper
-        run: python src/main.py
+    - name: Run Apartment Monitor
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        SMTP_HOST: ${{ secrets.SMTP_HOST }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        SMTP_USER: ${{ secrets.SMTP_USER }}
+        SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+        SOZIALBAU_COOKIE: ${{ secrets.SOZIALBAU_COOKIE }}
+        SOZIALBAU_JSESSIONID: ${{ secrets.SOZIALBAU_JSESSIONID }}
+        SOZIALBAU_SERVERID: ${{ secrets.SOZIALBAU_SERVERID }}
+      run: python src/main.py
+
+    - name: Commit State Changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add state.json
+        # commit if there are changes to state.json
+        git diff-index --quiet HEAD || (git commit -m "Update state.json [skip ci]" && git push)
