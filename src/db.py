@@ -83,7 +83,7 @@ def init_db():
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_history_stable_key ON apartment_history(stable_key);")
             
-            # 3. notified_listings table to track emailed matches separately from all scraped inventory
+            # 3. notified_listings table to track emailed matches 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS notified_listings (
                     stable_key VARCHAR(255) PRIMARY KEY,
@@ -111,7 +111,7 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
     try:
         conn = psycopg2.connect(get_db_url())
         with conn.cursor() as cur:
-            # clean up existing non-Vienna apartments from the DB
+            # clean up existing non-Vienna apartments from db
             cur.execute("SELECT stable_key, title, location, district FROM apartments")
             existing_db_rows = cur.fetchall()
             keys_to_delete = []
@@ -123,22 +123,22 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                     keys_to_delete.append(key)
             
             if keys_to_delete:
-                print(f"Deleting {len(keys_to_delete)} non-Vienna apartments from the db")
+                print(f"Deleting {len(keys_to_delete)} non-Vienna apartments from db...")
                 cur.execute("DELETE FROM apartments WHERE stable_key = ANY(%s)", (keys_to_delete,))
 
             for apt in apartments:
                 stable_key = apt.stable_key
                 district = extract_district(apt.location, apt.title)
                 
-                # if the listing is in Vienna
+                # check if in Vienna
                 has_vienna_term = bool(re.search(r'\bwien\b', (apt.location or "") + " " + (apt.title or ""), re.IGNORECASE))
                 is_wiener_neustadt_or_neudorf = bool(re.search(r'\bwiener\s+(neustadt|neudorf)\b', (apt.location or "") + " " + (apt.title or ""), re.IGNORECASE))
                 is_vienna = (district is not None) or (has_vienna_term and not is_wiener_neustadt_or_neudorf)
                 
                 if not is_vienna:
-                    continue # skip saving apartments outside of Vienna
+                    continue
                 
-                # if listing already exists to log price changes
+                # check if listing already exists
                 cur.execute(
                     "SELECT price, size_sqm, is_active FROM apartments WHERE stable_key = %s",
                     (stable_key,)
@@ -173,7 +173,7 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                     apt.available_immediately
                 ))
                 
-                #  history snapshot if change
+                # add history snapshot if it's new
                 if is_new:
                     cur.execute("""
                         INSERT INTO apartment_history (stable_key, price, size_sqm, is_active)
@@ -191,9 +191,9 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                             VALUES (%s, %s, %s, TRUE)
                         """, (stable_key, apt.price or 0.0, apt.size_sqm or 0.0))
             
-            # inactive listings that are no longer visible 
+            # inactivate listings that are no longer visible from the scraped sources
             if scraped_sources:
-                #  all currently active apartments in DB 
+                # find all currently active apartments in db for these sources that were NOT in the current run
                 placeholders = ', '.join(['%s'] * len(scraped_sources))
                 query = f"""
                     SELECT stable_key, price, size_sqm 
@@ -211,7 +211,6 @@ def save_apartments_to_db(apartments, scraped_sources: List[str] = None) -> Set[
                             "UPDATE apartments SET is_active = FALSE, last_seen = CURRENT_TIMESTAMP WHERE stable_key = %s",
                             (key,)
                         )
-                        # history snapshot
                         cur.execute("""
                             INSERT INTO apartment_history (stable_key, price, size_sqm, is_active)
                             VALUES (%s, %s, %s, FALSE)
@@ -246,6 +245,7 @@ def get_seen_keys_from_db() -> Set[str]:
             conn.close()
 
 def save_notified_keys_to_db(keys: List[str]):
+    """Saves a list of notified apartment keys to db."""
     if not is_db_configured() or not keys:
         return
         

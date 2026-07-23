@@ -26,7 +26,7 @@ class State:
         else:
             self.seen_keys = set()
 
-        #optinal - load from db to keep them fully in-sync
+        # 2. optional - load from db to keep in-sync
         try:
             from src.db import is_db_configured, get_seen_keys_from_db
             if is_db_configured():
@@ -45,14 +45,14 @@ class State:
             self.seen_keys.add(key)
         self.save()
         
-        # sync to db to keep them fully in-sync
+        # sync to db
         try:
             from src.db import is_db_configured, save_notified_keys_to_db
             if is_db_configured():
                 save_notified_keys_to_db(keys)
-                print(f"Successfully saved {len(keys)} notified keys to Neon database.")
+                print(f"saved {len(keys)} notified keys to Neon database.")
         except Exception as e:
-            print(f"Note: database seen sync save skipped: {e}")
+            print(f"database seen sync save skipped: {e}")
 
     def save(self):
         try:
