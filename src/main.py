@@ -25,6 +25,7 @@ from src.scrapers.schwarzatal import scrape_schwarzatal
 from src.scrapers.lebenswert_wohnen import scrape_lebenswert_wohnen
 from src.scrapers.bwsg import scrape_bwsg
 from src.scrapers.arwag import scrape_arwag
+from src.scrapers.nhg import scrape_nhg
 
 def run_pipeline():
     print("Starting Apartment Monitor run...")
@@ -75,6 +76,8 @@ def run_pipeline():
                 all_raw_listings.extend(scrape_bwsg())
             elif source_lower == "arwag":
                 all_raw_listings.extend(scrape_arwag())
+            elif source_lower == "nhg":
+                all_raw_listings.extend(scrape_nhg())
             else:
                 print(f"Unknown or unsupported source: {source}")
         except Exception as e:
