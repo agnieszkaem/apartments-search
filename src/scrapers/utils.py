@@ -6,7 +6,6 @@ from typing import Optional
 def fetch_html(url: str) -> Optional[str]:
     """
     Fetches the HTML of a URL.
-    Tries to use `requests` first if installed, falls back to standard `urllib.request`.
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -14,7 +13,9 @@ def fetch_html(url: str) -> Optional[str]:
     
     try:
         import requests
-        response = requests.get(url, headers=headers, timeout=15)
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        response = requests.get(url, headers=headers, timeout=15, verify=False)
         if response.status_code == 200:
             return response.text
         else:
@@ -24,10 +25,14 @@ def fetch_html(url: str) -> Optional[str]:
     except Exception as e:
         print(f"requests fetch error: {e}", file=sys.stderr)
 
-    # Fallback to standard urllib
     try:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, context=ctx, timeout=15) as response:
             return response.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         print(f"urllib HTTP error fetching {url}: {e.code} {e.reason}", file=sys.stderr)
